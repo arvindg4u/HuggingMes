@@ -1,0 +1,86 @@
+# ════════════════════════════════════════════════════════════════
+# HuggingMes — Caddy Reverse Proxy Configuration
+# ════════════════════════════════════════════════════════════════
+# Routes:
+#   /terminal/*   → JupyterLab (internal :8888)
+#   /v1/*         → Hermes API (internal :8642, OpenAI-compatible)
+#   /api/hermes/* → Hermes Gateway API (internal :8642)
+#   /health       → Health check
+#   /             → Hermes Dashboard (internal :9119)
+# ════════════════════════════════════════════════════════════════
+
+{
+  # Global settings
+  admin off
+  default_bind 0.0.0.0
+}
+
+:7860 {
+  # ── Health check endpoint ──
+  handle /health {
+    reverse_proxy 127.0.0.1:9080
+  }
+
+  # ── JupyterLab terminal ──
+  handle_path /terminal/* {
+    reverse_proxy 127.0.0.1:8888 {
+      # WebSocket support for JupyterLab
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+    }
+  }
+
+  # ── Hermes API (OpenAI-compatible) ──
+  handle_path /v1/* {
+    reverse_proxy 127.0.0.1:8642 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+    }
+  }
+
+  # ── Hermes Gateway API ──
+  handle_path /api/hermes/* {
+    reverse_proxy 127.0.0.1:8642 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+    }
+  }
+
+  # ── WebSocket support for Hermes ──
+  handle_path /ws/* {
+    reverse_proxy 127.0.0.1:8642 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+      # WebSocket
+      header_up Connection {>Connection}
+      header_up Upgrade {>Upgrade}
+    }
+  }
+
+  # ── Hermes Dashboard (default) ──
+  handle {
+    reverse_proxy 127.0.0.1:9119 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+    }
+  }
+
+  # ── Global headers ──
+  header {
+    # Security headers
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    X-XSS-Protection "1; mode=block"
+    -Server
+  }
+}

@@ -1,0 +1,32 @@
+# ════════════════════════════════════════════════════════════════
+# HuggingMes — Local development compose file
+# ════════════════════════════════════════════════════════════════
+# Usage:
+#   docker compose build
+#   docker compose up -d
+#   docker compose logs -f
+# ════════════════════════════════════════════════════════════════
+
+services:
+  hermes:
+    build:
+      context: .
+      args:
+        DEV_MODE: "true"
+    container_name: huggingmes
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+    env_file:
+      - .env
+    volumes:
+      - hermes_data:/home/hermes/.hermes
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--noproxy", "*", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+volumes:
+  hermes_data:
