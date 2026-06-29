@@ -6,22 +6,20 @@ umask 0077
 export TZ=Asia/Kolkata
 
 # ════════════════════════════════════════════════════════════════
+# HuggingMes — Hermes Agent for HF Spaces
+# ════════════════════════════════════════════════════════════════
+# Custom provider: opencode-free → CUSTOM_API_KEY
+# Backup: HF Dataset persistence for config, memory, skills
+# ════════════════════════════════════════════════════════════════
+
+trim_var() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
 hc_is_true() {
   case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
     1|true|yes|on) return 0 ;;
     *) return 1 ;;
   esac
 }
-# HuggingMes — Hermes Agent for HF Spaces
-# ════════════════════════════════════════════════════════════════
-# Custom provider system: opencode-free → CUSTOM_API_KEY
-# ════════════════════════════════════════════════════════════════
 
-trim_var() {
-  printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
-}
-
-# ── Banner ──
 echo ""
 echo "  ╔══════════════════════════════════════════╗"
 echo "  ║     🧠 HuggingMes — Hermes Agent        ║"
@@ -38,26 +36,20 @@ JUPYTER_PORT="${JUPYTER_PORT:-8888}"
 
 mkdir -p "$HERMES_HOME/logs"
 
-# ── Secrets from HF Space env vars ──
+# ── Secrets ──
 LLM_API_KEY="$(trim_var "${LLM_API_KEY:-}")"
 LLM_MODEL="$(trim_var "${LLM_MODEL:-}")"
 GATEWAY_TOKEN="$(trim_var "${GATEWAY_TOKEN:-}")"
 HERMES_API_KEY="$(trim_var "${HERMES_API_KEY:-${GATEWAY_TOKEN:-}}")"
 
 # ════════════════════════════════════════════════════════════════
-# CUSTOM PROVIDER: opencode-free
-# ════════════════════════════════════════════════════════════════
-# Maps opencode-free prefix → CUSTOM_API_KEY env var
+# CUSTOM PROVIDER
 # ════════════════════════════════════════════════════════════════
 
 if [ -n "$LLM_API_KEY" ]; then
   export CUSTOM_API_KEY="$LLM_API_KEY"
   echo "[provider] opencode-free → CUSTOM_API_KEY"
 fi
-
-# ════════════════════════════════════════════════════════════════
-# CUSTOM OPENAI-COMPATIBLE PROVIDER (optional)
-# ════════════════════════════════════════════════════════════════
 
 CUSTOM_PROVIDER_NAME="${CUSTOM_PROVIDER_NAME:-}"
 CUSTOM_BASE_URL="${CUSTOM_BASE_URL:-}"
@@ -70,25 +62,36 @@ CUSTOM_MAX_TOKENS="${CUSTOM_MAX_TOKENS:-8192}"
 if [ -n "$CUSTOM_PROVIDER_NAME" ] || [ -n "$CUSTOM_BASE_URL" ] || [ -n "$CUSTOM_MODEL_ID" ]; then
   CUSTOM_BASE_URL_NORMALIZED="${CUSTOM_BASE_URL%/}"
   CUSTOM_OK=true
-
   if [ -z "$CUSTOM_PROVIDER_NAME" ] || [ -z "$CUSTOM_BASE_URL" ] || [ -z "$CUSTOM_MODEL_ID" ]; then
-    echo "[provider] Warning: custom provider skipped — set CUSTOM_PROVIDER_NAME, CUSTOM_BASE_URL, and CUSTOM_MODEL_ID together."
+    echo "[provider] Warning: set CUSTOM_PROVIDER_NAME, CUSTOM_BASE_URL, and CUSTOM_MODEL_ID together."
     CUSTOM_OK=false
   fi
-
-  if [[ "$CUSTOM_BASE_URL_NORMALIZED" == */chat/completions ]] || [[ "$CUSTOM_BASE_URL_NORMALIZED" == */completions ]]; then
-    echo "[provider] Warning: CUSTOM_BASE_URL should be the API base URL, not a completions endpoint."
+  if [[ "$CUSTOM_BASE_URL_NORMALIZED" == */chat/completions ]]; then
+    echo "[provider] Warning: URL should be base URL, not completions endpoint."
     CUSTOM_OK=false
   fi
-
-  if ! [[ "$CUSTOM_CONTEXT_WINDOW" =~ ^[0-9]+$ ]] || ! [[ "$CUSTOM_MAX_TOKENS" =~ ^[0-9]+$ ]]; then
-    echo "[provider] Warning: CONTEXT_WINDOW and MAX_TOKENS must be numbers."
-    CUSTOM_OK=false
-  fi
-
   if [ "$CUSTOM_OK" = "true" ]; then
     echo "[provider] Registered: $CUSTOM_PROVIDER_NAME → $CUSTOM_BASE_URL_NORMALIZED"
   fi
+fi
+
+# ════════════════════════════════════════════════════════════════
+# HF DATASET BACKUP / RESTORE
+# ════════════════════════════════════════════════════════════════
+
+BACKUP_DATASET="${BACKUP_DATASET_NAME:-${BACKUP_DATASET:-huggingmes-backup}}"
+HF_TOKEN="${HF_TOKEN:-}"
+HF_USERNAME="${HF_USERNAME:-}"
+SYNC_INTERVAL="${SYNC_INTERVAL:-300}"
+
+if [ -n "${HF_TOKEN:-}" ] && [ -f "$HUGGINGMES_HOME/hermes-sync.py" ]; then
+  echo "[backup] HF Dataset persistence: ${HF_USERNAME}/${BACKUP_DATASET}"
+  echo "[backup] Restoring workspace from dataset..."
+  python3 "$HUGGINGMES_HOME/hermes-sync.py" restore || \
+    echo "[backup] Restore skipped (first run or dataset missing)"
+else
+  echo "[backup] HF_TOKEN not set — workspace data is ephemeral"
+  echo "[backup] Set HF_TOKEN secret for persistence across restarts"
 fi
 
 # ════════════════════════════════════════════════════════════════
@@ -104,7 +107,7 @@ write_hermes_env() {
 
   echo "[setup] Writing Hermes .env..."
   cat > "$env_file" << ENVEOF
-# ── Core ──
+# HuggingMes — auto-generated
 LLM_API_KEY=${LLM_API_KEY}
 LLM_MODEL=${LLM_MODEL}
 CUSTOM_API_KEY=${CUSTOM_API_KEY}
@@ -117,14 +120,12 @@ GATEWAY_HOST=0.0.0.0
 DASHBOARD_HOST=0.0.0.0
 ENVEOF
 
-  # Telegram
   if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
     cat >> "$env_file" << TELEEOF
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
 TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
 TELEEOF
   fi
-  # Discord
   if [ -n "${DISCORD_BOT_TOKEN:-}" ]; then
     cat >> "$env_file" << DISCEOF
 DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
@@ -145,22 +146,18 @@ write_config_yaml() {
 model:
   provider: opencode-free
   name: ${LLM_MODEL}
-
 gateway:
   host: 0.0.0.0
   port: ${GATEWAY_PORT}
   allowed_users:
     - "*"
-
 dashboard:
   host: 0.0.0.0
   port: ${DASHBOARD_PORT}
-
 api_server:
   enabled: true
   host: 0.0.0.0
   key: ${HERMES_API_KEY}
-
 memory:
   enabled: true
   dir: ${HERMES_HOME}/memory
@@ -172,6 +169,21 @@ logs:
 YAMLEOF
   echo "[setup] config.yaml written."
 }
+
+# ════════════════════════════════════════════════════════════════
+# TELEGRAM
+# ════════════════════════════════════════════════════════════════
+
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+  export TELEGRAM_BOT_TOKEN="$(echo "$TELEGRAM_BOT_TOKEN" | tr -d '[:space:]')"
+  echo "[telegram] Bot configured"
+  TELEGRAM_API_ROOT="${TELEGRAM_API_BASE:-}"
+  if [ -n "$TELEGRAM_API_ROOT" ]; then
+    export TELEGRAM_API_BASE="$TELEGRAM_API_ROOT"
+    echo "[telegram] API proxy: ${TELEGRAM_API_ROOT}"
+  fi
+  export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first"
+fi
 
 # ════════════════════════════════════════════════════════════════
 # SERVICE HELPERS
@@ -208,7 +220,6 @@ start_gateway() {
 
 start_dashboard() {
   echo "[hermes] Starting Dashboard on :${DASHBOARD_PORT}..."
-  cd "$HERMES_HOME"
   if command -v hermes &>/dev/null; then
     nohup hermes dashboard --host 0.0.0.0 --port "$DASHBOARD_PORT" --no-open \
       > "$HERMES_HOME/logs/dashboard.log" 2>&1 &
@@ -226,18 +237,21 @@ start_jupyter() {
   mkdir -p "$HERMES_HOME/jupyter"
   if command -v jupyter-lab &>/dev/null; then
     nohup jupyter-lab \
-      --ip=0.0.0.0 \
-      --port="$JUPYTER_PORT" \
-      --no-browser \
-      --NotebookApp.token="$jtoken" \
-      --NotebookApp.password="" \
-      --NotebookApp.allow_origin='*' \
-      --NotebookApp.disable_check_xsrf=True \
+      --ip=0.0.0.0 --port="$JUPYTER_PORT" --no-browser \
+      --NotebookApp.token="$jtoken" --NotebookApp.password="" \
+      --NotebookApp.allow_origin='*' --NotebookApp.disable_check_xsrf=True \
       --notebook-dir="$HERMES_HOME" \
       > "$HERMES_HOME/logs/jupyter.log" 2>&1 &
     echo "[jupyter] JupyterLab started"
-  else
-    echo "[jupyter] JupyterLab not available"
+  fi
+}
+
+start_sync_loop() {
+  if [ -n "${HF_TOKEN:-}" ] && [ -f "$HUGGINGMES_HOME/hermes-sync.py" ]; then
+    echo "[backup] Starting background sync loop (every ${SYNC_INTERVAL}s)..."
+    nohup python3 "$HUGGINGMES_HOME/hermes-sync.py" loop \
+      > "$HERMES_HOME/logs/sync.log" 2>&1 &
+    echo "[backup] Sync loop started"
   fi
 }
 
@@ -246,25 +260,6 @@ start_health() {
   nohup node "$HUGGINGMES_HOME/health-server.js" \
     > "$HERMES_HOME/logs/health.log" 2>&1 &
 }
-
-# ════════════════════════════════════════════════════════════════
-# TELEGRAM
-# ════════════════════════════════════════════════════════════════
-
-if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
-  CLEAN_TG_TOKEN=$(echo "$TELEGRAM_BOT_TOKEN" | tr -d '[:space:]')
-  export TELEGRAM_BOT_TOKEN="$CLEAN_TG_TOKEN"
-  echo "[telegram] Bot configured"
-
-  # Telegram proxy for HF Spaces (api.telegram.org may be blocked)
-  TELEGRAM_API_ROOT="${TELEGRAM_API_BASE:-}"
-  if [ -n "$TELEGRAM_API_ROOT" ]; then
-    export TELEGRAM_API_BASE="$TELEGRAM_API_ROOT"
-    echo "[telegram] API proxy: ${TELEGRAM_API_ROOT}"
-  fi
-
-  export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first"
-fi
 
 # ════════════════════════════════════════════════════════════════
 # MAIN
@@ -276,11 +271,11 @@ write_config_yaml
 start_gateway
 start_dashboard
 
-# Auto-enable Jupyter when GATEWAY_TOKEN is set
 if hc_is_true "${DEV_MODE:-false}"; then start_jupyter
 elif [ -z "${DEV_MODE:-}" ] && [ -n "${GATEWAY_TOKEN:-}" ]; then start_jupyter
 fi
 
+start_sync_loop
 start_health
 
 sleep 3

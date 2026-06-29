@@ -61,6 +61,8 @@ RUN mkdir -p /opt/huggingmes && chown hermes:hermes /opt/huggingmes
 COPY --chown=hermes:hermes start.sh /opt/huggingmes/start.sh
 COPY --chown=hermes:hermes Caddyfile /opt/huggingmes/Caddyfile
 COPY --chown=hermes:hermes health-server.js /opt/huggingmes/health-server.js
+COPY --chown=hermes:hermes hermes-sync.py /opt/huggingmes/hermes-sync.py
+RUN chmod +x /opt/huggingmes/hermes-sync.py
 RUN chmod +x /opt/huggingmes/start.sh
 
 # ── Override entrypoint / CMD ──

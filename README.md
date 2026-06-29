@@ -111,3 +111,38 @@ HF Space :7860 → Caddy reverse proxy
 ## 📄 License
 
 MIT
+
+## 💾 HF Dataset Backup (Workspace Persistence)
+
+HF Spaces are ephemeral — data is lost on restart. HuggingMes auto-syncs Hermes config, memory, skills, and credentials to a **private HF Dataset** so everything persists.
+
+### Setup
+
+1. Get a [HF access token](https://huggingface.co/settings/tokens) with `write` permission
+2. Add these **Secrets** in Space Settings:
+   - `HF_TOKEN` — your HF token
+   - `HF_USERNAME` — your HF username (e.g. `arvindlabs`)
+3. (Optional) `BACKUP_DATASET_NAME` — dataset name (default: `huggingmes-backup`)
+
+### How it works
+
+- **On startup:** Restores Hermes workspace from the dataset
+- **Every 5 min:** Background sync loop uploads changes
+- **Files synced:** `config.yaml`, `.env`, `memory/`, `skills/`, `credentials/`
+
+Dataset is created automatically on first upload — no manual setup needed.
+
+## 📚 Configuration Reference
+
+| Secret | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `LLM_API_KEY` | ✅ | — | OpenCode free tier API key |
+| `LLM_MODEL` | ✅ | — | `opencode-free/deepseek-v4-flash-free` |
+| `GATEWAY_TOKEN` | ✅ | — | Dashboard auth token |
+| `TELEGRAM_BOT_TOKEN` | ❌ | — | Telegram bot token |
+| `TELEGRAM_ALLOWED_USERS` | ❌ | — | Comma-separated Telegram user IDs |
+| `HF_TOKEN` | ❌ | — | HF token for dataset backup |
+| `HF_USERNAME` | ❌ | — | HF username for dataset backup |
+| `BACKUP_DATASET_NAME` | ❌ | `huggingmes-backup` | Dataset name for backup |
+| `SYNC_INTERVAL` | ❌ | `300` | Backup sync interval (seconds) |
+| `DEV_MODE` | ❌ | — | Enable JupyterLab terminal |
