@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir hermes-agent && \
 # ── Install JupyterLab + HF tools (DEV_MODE) ──
 RUN if [ "${DEV_MODE}" = "true" ] || [ "${DEV_MODE}" = "1" ]; then \
       pip install --no-cache-dir \
-        jupyterlab==4.5.7 notebook==7.3.3 tornado==6.5.5 ipywidgets==8.1.8 \
+        jupyterlab==4.3.6 notebook==7.3.3 tornado==6.5.5 ipywidgets==8.1.8 \
         huggingface_hub; \
     else \
       pip install --no-cache-dir huggingface_hub; \
