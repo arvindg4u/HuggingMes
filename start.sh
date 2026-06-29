@@ -2,15 +2,13 @@
 set -euo pipefail
 
 umask 0077
-
 export TZ=Asia/Kolkata
 
-# ════════════════════════════════════════════════════════════════
-# HuggingMes — Hermes Agent for HF Spaces
-# ════════════════════════════════════════════════════════════════
-# Custom provider: opencode-free → CUSTOM_API_KEY
-# Backup: HF Dataset persistence for config, memory, skills
-# ════════════════════════════════════════════════════════════════
+echo ""
+echo "  ╔══════════════════════════════════════════╗"
+echo "  ║     🧠 HuggingMes — Hermes Agent        ║"
+echo "  ╚══════════════════════════════════════════╝"
+echo ""
 
 trim_var() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
 hc_is_true() {
@@ -20,13 +18,7 @@ hc_is_true() {
   esac
 }
 
-echo ""
-echo "  ╔══════════════════════════════════════════╗"
-echo "  ║     🧠 HuggingMes — Hermes Agent        ║"
-echo "  ╚══════════════════════════════════════════╝"
-echo ""
-
-# ── Ports & paths ──
+# ── Paths ──
 HERMES_HOME="${HERMES_HOME:-/opt/data}"
 HUGGINGMES_HOME="/opt/huggingmes"
 PORT="${PORT:-7860}"
@@ -34,7 +26,7 @@ GATEWAY_PORT="${GATEWAY_PORT:-8642}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-9119}"
 JUPYTER_PORT="${JUPYTER_PORT:-8888}"
 
-mkdir -p "$HERMES_HOME/logs"
+mkdir -p "$HERMES_HOME/logs" "$HERMES_HOME/memory" "$HERMES_HOME/skills"
 
 # ── Secrets ──
 LLM_API_KEY="$(trim_var "${LLM_API_KEY:-}")"
@@ -43,74 +35,44 @@ GATEWAY_TOKEN="$(trim_var "${GATEWAY_TOKEN:-}")"
 HERMES_API_KEY="$(trim_var "${HERMES_API_KEY:-${GATEWAY_TOKEN:-}}")"
 
 # ════════════════════════════════════════════════════════════════
-# CUSTOM PROVIDER
+# CUSTOM PROVIDER: OpenCode Free
 # ════════════════════════════════════════════════════════════════
-
+OPENCODE_API_BASE="${OPENCODE_API_BASE:-https://api.opencode.ai/v1}"
 if [ -n "$LLM_API_KEY" ]; then
   export CUSTOM_API_KEY="$LLM_API_KEY"
-  echo "[provider] opencode-free → CUSTOM_API_KEY"
-fi
-
-CUSTOM_PROVIDER_NAME="${CUSTOM_PROVIDER_NAME:-}"
-CUSTOM_BASE_URL="${CUSTOM_BASE_URL:-}"
-CUSTOM_MODEL_ID="${CUSTOM_MODEL_ID:-}"
-CUSTOM_MODEL_NAME="${CUSTOM_MODEL_NAME:-$CUSTOM_MODEL_ID}"
-CUSTOM_API_KEY="${CUSTOM_API_KEY:-$LLM_API_KEY}"
-CUSTOM_CONTEXT_WINDOW="${CUSTOM_CONTEXT_WINDOW:-128000}"
-CUSTOM_MAX_TOKENS="${CUSTOM_MAX_TOKENS:-8192}"
-
-if [ -n "$CUSTOM_PROVIDER_NAME" ] || [ -n "$CUSTOM_BASE_URL" ] || [ -n "$CUSTOM_MODEL_ID" ]; then
-  CUSTOM_BASE_URL_NORMALIZED="${CUSTOM_BASE_URL%/}"
-  CUSTOM_OK=true
-  if [ -z "$CUSTOM_PROVIDER_NAME" ] || [ -z "$CUSTOM_BASE_URL" ] || [ -z "$CUSTOM_MODEL_ID" ]; then
-    echo "[provider] Warning: set CUSTOM_PROVIDER_NAME, CUSTOM_BASE_URL, and CUSTOM_MODEL_ID together."
-    CUSTOM_OK=false
-  fi
-  if [[ "$CUSTOM_BASE_URL_NORMALIZED" == */chat/completions ]]; then
-    echo "[provider] Warning: URL should be base URL, not completions endpoint."
-    CUSTOM_OK=false
-  fi
-  if [ "$CUSTOM_OK" = "true" ]; then
-    echo "[provider] Registered: $CUSTOM_PROVIDER_NAME → $CUSTOM_BASE_URL_NORMALIZED"
-  fi
+  export OPENAI_API_KEY="$LLM_API_KEY"
+  export OPENAI_BASE_URL="$OPENCODE_API_BASE"
+  echo "[provider] OpenCode Free → CUSTOM_API_KEY (base: ${OPENCODE_API_BASE})"
 fi
 
 # ════════════════════════════════════════════════════════════════
-# HF DATASET BACKUP / RESTORE
+# HF DATASET BACKUP
 # ════════════════════════════════════════════════════════════════
-
 BACKUP_DATASET="${BACKUP_DATASET_NAME:-${BACKUP_DATASET:-huggingmes-backup}}"
 HF_TOKEN="${HF_TOKEN:-}"
 HF_USERNAME="${HF_USERNAME:-}"
-SYNC_INTERVAL="${SYNC_INTERVAL:-300}"
 
 if [ -n "${HF_TOKEN:-}" ] && [ -f "$HUGGINGMES_HOME/hermes-sync.py" ]; then
-  echo "[backup] HF Dataset persistence: ${HF_USERNAME}/${BACKUP_DATASET}"
-  echo "[backup] Restoring workspace from dataset..."
-  python3 "$HUGGINGMES_HOME/hermes-sync.py" restore || \
-    echo "[backup] Restore skipped (first run or dataset missing)"
+  echo "[backup] Restoring from dataset..."
+  python3 "$HUGGINGMES_HOME/hermes-sync.py" restore || true
 else
-  echo "[backup] HF_TOKEN not set — workspace data is ephemeral"
-  echo "[backup] Set HF_TOKEN secret for persistence across restarts"
+  echo "[backup] HF_TOKEN not set — workspace is ephemeral"
 fi
 
 # ════════════════════════════════════════════════════════════════
-# HERMES CONFIG
+# HERMES CONFIG WRITER
 # ════════════════════════════════════════════════════════════════
 
 write_hermes_env() {
+  [ -z "$LLM_API_KEY" ] && return
   local env_file="$HERMES_HOME/.env"
-  if [ -z "$LLM_API_KEY" ] || [ -z "$LLM_MODEL" ]; then
-    echo "[setup] SKIP: LLM_API_KEY or LLM_MODEL not set."
-    return
-  fi
-
-  echo "[setup] Writing Hermes .env..."
+  echo "[setup] Writing .env..."
   cat > "$env_file" << ENVEOF
-# HuggingMes — auto-generated
 LLM_API_KEY=${LLM_API_KEY}
 LLM_MODEL=${LLM_MODEL}
-CUSTOM_API_KEY=${CUSTOM_API_KEY}
+OPENAI_API_KEY=${LLM_API_KEY}
+OPENAI_BASE_URL=${OPENCODE_API_BASE}
+CUSTOM_API_KEY=${LLM_API_KEY}
 GATEWAY_TOKEN=${GATEWAY_TOKEN}
 GATEWAY_ALLOW_ALL_USERS=true
 API_SERVER_ENABLED=true
@@ -121,72 +83,69 @@ DASHBOARD_HOST=0.0.0.0
 ENVEOF
 
   if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
-    cat >> "$env_file" << TELEEOF
-TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
-TELEEOF
+    echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" >> "$env_file"
+    echo "TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}" >> "$env_file"
   fi
   if [ -n "${DISCORD_BOT_TOKEN:-}" ]; then
-    cat >> "$env_file" << DISCEOF
-DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
-DISCORD_APP_ID=${DISCORD_APP_ID:-}
-DISCEOF
+    echo "DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}" >> "$env_file"
+    echo "DISCORD_APP_ID=${DISCORD_APP_ID:-}" >> "$env_file"
   fi
-
   echo "[setup] .env written."
 }
 
 write_config_yaml() {
   local cfg="$HERMES_HOME/config.yaml"
-  [ -f "$cfg" ] && echo "[setup] config.yaml exists — keeping it." && return
-  if [ -z "$LLM_API_KEY" ] || [ -z "$LLM_MODEL" ]; then return; fi
+  echo "[setup] Writing config.yaml..."
+  
+  # Extract model name after the provider prefix: opencode-free/deepseek-v4-flash-free → deepseek-v4-flash-free
+  local model_name="${LLM_MODEL#*/}"
+  [ -z "$model_name" ] && model_name="$LLM_MODEL"
 
   cat > "$cfg" << YAMLEOF
 # Hermes Agent — HuggingMes
 model:
-  provider: opencode-free
-  name: ${LLM_MODEL}
+  provider: openai
+  name: ${model_name}
+
 gateway:
   host: 0.0.0.0
   port: ${GATEWAY_PORT}
   allowed_users:
     - "*"
+
 dashboard:
   host: 0.0.0.0
   port: ${DASHBOARD_PORT}
+
 api_server:
   enabled: true
   host: 0.0.0.0
   key: ${HERMES_API_KEY}
+
 memory:
   enabled: true
   dir: ${HERMES_HOME}/memory
+
 skills:
   dir: ${HERMES_HOME}/skills
+
 logs:
   dir: ${HERMES_HOME}/logs
   level: info
+
+# Custom OpenAI-compatible provider config
+providers:
+  openai:
+    base_url: ${OPENCODE_API_BASE}
+    api_key: ${LLM_API_KEY}
+    models:
+      - id: ${model_name}
 YAMLEOF
   echo "[setup] config.yaml written."
 }
 
 # ════════════════════════════════════════════════════════════════
-# TELEGRAM
-# ════════════════════════════════════════════════════════════════
-
-if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
-  export TELEGRAM_BOT_TOKEN="$(echo "$TELEGRAM_BOT_TOKEN" | tr -d '[:space:]')"
-  echo "[telegram] Bot configured"
-  TELEGRAM_API_ROOT="${TELEGRAM_API_BASE:-}"
-  if [ -n "$TELEGRAM_API_ROOT" ]; then
-    export TELEGRAM_API_BASE="$TELEGRAM_API_ROOT"
-    echo "[telegram] API proxy: ${TELEGRAM_API_ROOT}"
-  fi
-  export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first"
-fi
-
-# ════════════════════════════════════════════════════════════════
-# SERVICE HELPERS
+# SERVICES
 # ════════════════════════════════════════════════════════════════
 
 wait_for_port() {
@@ -209,7 +168,7 @@ start_gateway() {
     set -a; . "$HERMES_HOME/.env"; set +a
   fi
   if command -v hermes &>/dev/null; then
-    nohup hermes gateway run > "$HERMES_HOME/logs/gateway.log" 2>&1 &
+    nohup hermes gateway run --accept-hooks > "$HERMES_HOME/logs/gateway.log" 2>&1 &
   else
     echo "[hermes] ERROR: hermes CLI not found!"
     return 1
@@ -221,7 +180,7 @@ start_gateway() {
 start_dashboard() {
   echo "[hermes] Starting Dashboard on :${DASHBOARD_PORT}..."
   if command -v hermes &>/dev/null; then
-    nohup hermes dashboard --host 0.0.0.0 --port "$DASHBOARD_PORT" --no-open \
+    nohup hermes dashboard --accept-hooks --host 0.0.0.0 --port "$DASHBOARD_PORT" --no-open \
       > "$HERMES_HOME/logs/dashboard.log" 2>&1 &
   else
     echo "[hermes] Dashboard skipped"
@@ -246,12 +205,11 @@ start_jupyter() {
   fi
 }
 
-start_sync_loop() {
+start_sync() {
   if [ -n "${HF_TOKEN:-}" ] && [ -f "$HUGGINGMES_HOME/hermes-sync.py" ]; then
-    echo "[backup] Starting background sync loop (every ${SYNC_INTERVAL}s)..."
+    echo "[backup] Starting sync loop..."
     nohup python3 "$HUGGINGMES_HOME/hermes-sync.py" loop \
       > "$HERMES_HOME/logs/sync.log" 2>&1 &
-    echo "[backup] Sync loop started"
   fi
 }
 
@@ -260,6 +218,20 @@ start_health() {
   nohup node "$HUGGINGMES_HOME/health-server.js" \
     > "$HERMES_HOME/logs/health.log" 2>&1 &
 }
+
+# ════════════════════════════════════════════════════════════════
+# TELEGRAM
+# ════════════════════════════════════════════════════════════════
+
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+  export TELEGRAM_BOT_TOKEN="$(echo "$TELEGRAM_BOT_TOKEN" | tr -d '[:space:]')"
+  echo "[telegram] Bot configured: @Pintu_OpenClaw_bot"
+  TELEGRAM_API_ROOT="${TELEGRAM_API_BASE:-}"
+  if [ -n "$TELEGRAM_API_ROOT" ]; then
+    export TELEGRAM_API_BASE="$TELEGRAM_API_ROOT"
+  fi
+  export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first"
+fi
 
 # ════════════════════════════════════════════════════════════════
 # MAIN
@@ -275,11 +247,11 @@ if hc_is_true "${DEV_MODE:-false}"; then start_jupyter
 elif [ -z "${DEV_MODE:-}" ] && [ -n "${GATEWAY_TOKEN:-}" ]; then start_jupyter
 fi
 
-start_sync_loop
+start_sync
 start_health
 
-sleep 3
-wait_for_port "127.0.0.1" "$GATEWAY_PORT" "Gateway" 60 || true
+sleep 5
+wait_for_port "127.0.0.1" "$GATEWAY_PORT" "Gateway" 90 || true
 wait_for_port "127.0.0.1" "$DASHBOARD_PORT" "Dashboard" 30 || true
 
 echo "[caddy] Proxy listening on :${PORT}..."
